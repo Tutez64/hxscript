@@ -1395,7 +1395,7 @@ class Scripted {
 
 			__base = base;
 			__safe = base.safe;
-			__interp = Type.createInstance(hxscript.Config.interpClass, [base.interp.environment, this]);
+			__interp = hxscript.runtime.StdType.createInstance(hxscript.Config.interpClass, [base.interp.environment, this]);
 			__interp.ownerClass = base;
 			__interp.pushStack(hxscript.runtime.ScriptStack.StackItem.SModule(base.module?.path ?? base.name));
 
@@ -1453,7 +1453,7 @@ class Scripted {
 				/** Kept in `__vars` too, since a compiled body asks from outside any frame of the interpreter's. */
 				var __superRef:hxscript.runtime.Variable = {
 					ref: hxscript.runtime.Reference.RSuper(superLocals, __constructSuper,
-						Type.getSuperClass(Type.getClass(this)))
+						hxscript.runtime.StdType.getSuperClass(hxscript.runtime.StdType.getClass(this)))
 				};
 				__interp.locals.set('super', __superRef);
 				__vars.set('super', __superRef);
@@ -1539,7 +1539,7 @@ class Scripted {
 								 * so the arguments it passes are evaluated once rather than twice. They
 								 * were evaluated before the instance existed, to make it.
 								 */
-								var body:hxscript.syntax.Expr = Reflect.field(Type.getClass(this),
+								var body:hxscript.syntax.Expr = Reflect.field(hxscript.runtime.StdType.getClass(this),
 									'__nativeSuper') == true ? hxscript.types.ScriptedTools.withoutSuper(fun.expr) : fun.expr;
 
 								constructor = __interp.buildFunction(f, fun.args, body, fun.ret, superLocals, true);
@@ -1574,7 +1574,7 @@ class Scripted {
 					 */
 					var __superRef:hxscript.runtime.Variable = {
 						ref: hxscript.runtime.Reference.RSuper(superLocals, constructor ?? __constructSuper,
-							constructor != null ? null : Type.getSuperClass(Type.getClass(this)))
+							constructor != null ? null : hxscript.runtime.StdType.getSuperClass(hxscript.runtime.StdType.getClass(this)))
 					};
 					__interp.locals.set('super', __superRef);
 					__vars.set('super', __superRef);
