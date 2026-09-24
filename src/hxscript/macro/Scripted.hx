@@ -870,7 +870,8 @@ class Scripted {
 								var ctr = c.get().constructor;
 								if (ctr != null)
 									ctor = ctr.get().type;
-								requiredArgs.push(requiredCount(ctor));
+								var rn:Int = requiredCount(ctor);
+								requiredArgs.push(rn);
 								for (a in args)
 									collectWritten(a);
 							default:
@@ -900,15 +901,22 @@ class Scripted {
 					 * @param params The arguments after mapping.
 					 * @return Arguments with expanded optional `null`s removed.
 					 */
+					function isPaddingNull(e:Expr):Bool {
+						return switch (e.expr) {
+							case EConst(CIdent('null')): true;
+							case EParenthesis(inner) | ECheckType(inner, _) | ECast(inner, _) | EMeta(_, inner):
+								isPaddingNull(inner);
+							default: false;
+						}
+					}
+
 					function dropTrailingNulls(params:Array<Expr>):Array<Expr> {
 						var out:Array<Expr> = params.copy();
 						while (out.length > 0) {
-							switch (out[out.length - 1].expr) {
-								case EConst(CIdent('null')):
-									out.pop();
-								default:
-									break;
-							}
+							if (isPaddingNull(out[out.length - 1]))
+								out.pop();
+							else
+								break;
 						}
 						return out;
 					}
@@ -945,9 +953,19 @@ class Scripted {
 							return params;
 						if (dropped.length >= n)
 							return dropped;
+
+						/**
+						 * A high required count must not put the optional padding back.
+						 * `new Key("a", null, null)` stays `new Key("a")`. An explicit `null`
+						 * that is itself required (`take(null)`) is the one argument kept.
+						 */
 						if (n > params.length)
 							n = params.length;
-						return [for (i in 0...n) params[i]];
+						var kept:Array<Expr> = [for (i in 0...n) params[i]];
+						var trimmed:Array<Expr> = dropTrailingNulls(kept);
+						if (trimmed.length == 0 && params.length > 0)
+							return [params[0]];
+						return trimmed;
 					}
 
 					function mapSuper(e:Expr) {
@@ -958,7 +976,7 @@ class Scripted {
 
 								{
 									pos: pos,
-									expr: ENew(t, [for (param in writtenParams(params)) param.map(mapSuper)])
+									expr: ENew(t, [for (param in writtenParams(params)) mapSuper(param)])
 								}
 
 							case ECall(e, params):
@@ -975,7 +993,7 @@ class Scripted {
 								 * `collectWritten` recorded.
 								 */
 								var callee:Expr = isSuper ? mapConstructor(type.superClass.t.get(), type.superClass.params) : e.map(mapSuper);
-								var mapped:Array<Expr> = [for (param in kept) param.map(mapSuper)];
+								var mapped:Array<Expr> = [for (param in kept) mapSuper(param)];
 
 								{
 									pos: pos,
