@@ -593,6 +593,14 @@ class Scripted {
 								reason = 'it inlines an abstract\'s constructor, which assigns to `this`';
 
 							/**
+							 * An inlined abstract method reads its underlying value as a local named
+							 * `this`. Printed into the bridge, that is the instance, so `var int = this`
+							 * tries to store the object in an `Int`.
+							 */
+							case TLocal(v) if (v.name == 'this'):
+								reason = 'it inlines an abstract method, which reads `this` as the underlying value';
+
+							/**
 							 * The same loss in the form it takes once the compiler has reduced it further: a
 							 * write whose value no longer carries the abstract its field is declared as.
 							 */
