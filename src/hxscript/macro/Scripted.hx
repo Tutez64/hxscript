@@ -750,6 +750,14 @@ class Scripted {
 								reason = 'it inlines an abstract\'s constructor, which assigns to `this`';
 
 							/**
+							 * An inlined abstract method reads its underlying value as a local named
+							 * `this`. Printed into the bridge, that is the instance, so `var int = this`
+							 * tries to store the object in an `Int`.
+							 */
+							case TLocal(v) if (v.name == 'this'):
+								reason = 'it inlines an abstract method, which reads `this` as the underlying value';
+
+							/**
 							 * Extern `(get, set)` properties are already `n.set_value(0)` in the typed
 							 * AST (`FDynamic`). getTypedExpr keeps that call, and the extern has no
 							 * `set_value` field (`sys.thread.Tls`, `WorkOutput.workIterations.value = 0`).
