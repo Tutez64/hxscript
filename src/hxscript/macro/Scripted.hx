@@ -685,6 +685,7 @@ class Scripted {
 
 							case TField(_, FStatic(c, cf)):
 								var cls:ClassType = c.get();
+								var field:ClassField = cf.get();
 
 								if (cls.name.endsWith('_Impl_')) {
 									/**
@@ -694,7 +695,17 @@ class Scripted {
 									 * instance method (`Cannot access non-static abstract field
 									 * statically`). Refuse every `_Impl_` field, not only `:impl`.
 									 */
-									reason = 'it uses abstract ${cls.module} (${cf.get().name}), which getTypedExpr cannot re-emit as source';
+									reason = 'it uses abstract ${cls.module} (${field.name}), which getTypedExpr cannot re-emit as source';
+									return;
+								}
+
+								/**
+								 * A private static has no name the subclass can write. A public inline that
+								 * calls one, and that one calls itself, leaves the private call in the
+								 * rebuilt constructor (`Unknown identifier`).
+								 */
+								if (!field.isPublic) {
+									reason = 'it calls ${typePath(cls.module, cls.name)}.${field.name}, which is private';
 									return;
 								}
 
