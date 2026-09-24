@@ -375,6 +375,13 @@ class Scripted {
 
 							case TField(_, FStatic(c, _)) | TTypeExpr(TClassDecl(c)):
 								var cls:ClassType = c.get();
+								var parts:Array<String> = cls.module.split('.');
+								var moduleName:String = parts.pop();
+								var name:String = cls.name.endsWith('_Impl_') ? cls.name.substr(0, cls.name.length - 6) : cls.name;
+
+								if (!qualified.exists(cls.name))
+									qualified.set(cls.name,
+										{pack: parts, name: moduleName, sub: (moduleName == name ? null : name)});
 
 								if (cls.name.endsWith('_Impl_') && !abstractOf.exists(cls.name)) {
 									switch (cls.kind) {
@@ -448,6 +455,18 @@ class Scripted {
 
 							case EConst(CIdent(name)) if (name.indexOf('`') >= 0):
 								{pos: x.pos, expr: EConst(CIdent(name.replace('`', '_')))};
+
+							/**
+							 * A switch subject is reprinted from the source, so `Elsewhere.context.type`
+							 * keeps the imported short name. The bridge module does not have that import.
+							 */
+							case EField({expr: EConst(CIdent(name))}, member, kind) if (qualified.exists(name)):
+								var q:TypePath = qualified.get(name);
+								var parts:Array<String> = q.pack.concat([q.name]);
+								if (q.sub != null)
+									parts.push(q.sub);
+								parts.push(member);
+								{pos: x.pos, expr: (macro $p{parts}).expr};
 
 							case EVars(vars):
 								{
