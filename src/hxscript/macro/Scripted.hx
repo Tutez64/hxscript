@@ -1104,11 +1104,18 @@ class Scripted {
 								for (i => arg in args) {
 									var defaultValue:Expr = defaults[i];
 
+									/**
+									 * The type stays even when a default is written. The default is
+									 * re-emitted as `cast <expr>`, which does not say what the argument
+									 * is. Without the type, `options = ""` is inferred from
+									 * `options.indexOf("g")` as a structure, and `String` is not that
+									 * structure: its `indexOf` has an optional second argument.
+									 */
 									{
 										name: arg.name,
 										value: defaultValue,
 										opt: (defaultValue == null ? arg.opt : null),
-										type: (defaultValue == null ? toCT(arg.t) : null)
+										type: toCT(arg.t)
 									}
 								}
 							],
@@ -1408,10 +1415,14 @@ class Scripted {
 
 										var t = mapGeneric(toCT(arg.t));
 
+										/**
+										 * Same as a rebuilt constructor: a default does not erase the
+										 * declared type.
+										 */
 										{
 											name: arg.name,
 											value: defaultValue,
-											type: (defaultValue == null ? t : null),
+											type: t,
 											opt: (defaultValue == null ? arg.opt : null)
 										}
 									}
