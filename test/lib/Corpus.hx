@@ -550,6 +550,9 @@ class Corpus {
 		check('is operator, false', 'var s:Dynamic = 5; return s is String;', 'false');
 		check('is operator on a scripted class', 'var v:Dynamic = new T(); return v is T;', 'true',
 			'public function new() {}');
+		check('a dotted host type as a value', 'return Type.getClassName(haxe.ds.StringMap);', 'haxe.ds.StringMap');
+		check('a dotted host type in isOfType', 'var m:Dynamic = new haxe.ds.StringMap<Int>(); return Std.isOfType(m, haxe.ds.StringMap);',
+			'true');
 
 		at('inheritance');
 		check('super call', 'return new Child().speak();', 'base then child', null,
