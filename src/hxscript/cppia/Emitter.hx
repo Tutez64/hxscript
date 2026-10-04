@@ -2341,6 +2341,19 @@ class Emitter {
 			return;
 		}
 
+		/**
+		 * A dotted path that names a type as a whole, `Std.isOfType(v, openfl.display.Sprite)`. Its head
+		 * is a package, not a value, so reading it as a field chain refused the module over the first
+		 * segment.
+		 */
+		var whole:Null<String> = typeOf({e: EField(obj, name, false), pos: pos});
+		if (whole != null) {
+			w.pos(line);
+			w.token('CLASSOF');
+			useType(whole);
+			return;
+		}
+
 		var writing:Bool = writingTo;
 		writingTo = false;
 
