@@ -755,7 +755,25 @@ class ScriptedClass implements IScriptedType implements ICustomReflection implem
 	 * @param v The field's declaration.
 	 */
 	function initField(f:String, v:VarDecl):Void {
-		var value:Dynamic = (v.expr == null) ? null : interp.exprReturn(v.expr, v.type);
+		/**
+		 * A script function unwinds its frame on a throw only inside a script `try`, and what the
+		 * initialiser throws is caught by the caller instead, so it runs as if inside one. Left wound,
+		 * the frame of a function that threw made the next static function built here crash.
+		 */
+		var outer:Bool = interp.inTry;
+		var declared:Int = interp.declaredNames.length;
+		interp.inTry = true;
+
+		var value:Dynamic = null;
+		try {
+			if (v.expr != null)
+				value = interp.exprReturn(v.expr, v.type);
+		} catch (e:Dynamic) {
+			interp.restore(declared);
+			interp.inTry = outer;
+			throw e;
+		}
+		interp.inTry = outer;
 		var slot:Variable = interp.locals.get(f);
 		var bound:Variable = interp.bindDeclared(value, v.type);
 
