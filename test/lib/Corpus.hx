@@ -392,6 +392,8 @@ class Corpus {
 		check('array literal into an optional argument', 'return fill();', '1.5',
 			'static function fill(?a:Array<Float>):Float { if (a == null) a = []; return push(a); } ' + push);
 		check('array literal type check', 'var a = ([] : Array<Float>); return push(a);', '1.5', push);
+		check('array literal stored in a map by key', 'times["a"] = []; return push(times["a"]);', '1.5',
+			'static var times:Map<String, Array<Float>> = new haxe.ds.StringMap(); ' + push);
 		check('array literal stored in a map', 'times.set("a", []); return push(times.get("a"));', '1.5',
 			'static var times:Map<String, Array<Float>> = new haxe.ds.StringMap(); ' + push);
 		check('array literal into a local read from a map', 'seen("a"); return seen("a");', '1.5',

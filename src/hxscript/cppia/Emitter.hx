@@ -1863,6 +1863,7 @@ class Emitter {
 					w.str('set');
 					expr(map);
 					expr(key);
+					expectedArray = assignedArray(e1);
 					boolean(e2, line);
 					return;
 				case _:
