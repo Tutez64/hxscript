@@ -44,6 +44,9 @@ class CppiaTest {
 	/** The same shape with nothing wrapping it for scripts, which is most of a framework's abstracts. */
 	@:keep static var bare:HostBare = null;
 
+	/** An enum abstract with no wrapper, whose values a module writes and the loader cannot link. */
+	@:keep static var autoSize:HostAutoSize = HostAutoSize.CENTER;
+
 	public static function run():Void {
 		/**
 		 * On by default, because it is a different code path: an expression the JIT has no generator
