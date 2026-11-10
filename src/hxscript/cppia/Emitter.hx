@@ -105,11 +105,14 @@ class Emitter {
 	/** Full path for each short type name in view, from imports, declarations and ambient types. */
 	var typePaths:StringMap<String>;
 
-	/** The short names the module being read bound by its imports, in the order it wrote them. */
-	var importedNames:Array<String> = [];
+	/** The short names bound for the module being read, in the order they were. */
+	var boundNames:Array<String> = [];
 
-	/** What each of `importedNames` named before the import, null for nothing. */
-	var importedBefore:Array<Null<String>> = [];
+	/** What each of `boundNames` named before, null for nothing. */
+	var boundBefore:Array<Null<String>> = [];
+
+	/** The types the batch declares, by package: what a module of that package names bare. */
+	var declaredIn:StringMap<Array<String>> = new StringMap();
 
 	/** How many typedef hops to follow before giving up, so a cycle cannot spin. */
 	static inline var TYPEDEF_DEPTH:Int = 8;
@@ -504,9 +507,9 @@ class Emitter {
 	 * @param moduleName The module they came from, used to keep two batches' classes apart.
 	 */
 	public function declare(decls:Array<ModuleDecl>, moduleName:String = null):Void {
-		var pack:String = '';
+		announce(decls);
 
-		forgetImports();
+		var pack:String = view(decls);
 
 		for (decl in decls) {
 			switch (decl.d) {
@@ -537,7 +540,7 @@ class Emitter {
 					});
 				case DClass(c) | DInterface(c):
 					var full:String = pack.length > 0 ? pack + '.' + c.name : c.name;
-					typePaths.set(c.name, full);
+					bind(c.name, full);
 					moduleClasses.set(full, true);
 
 					var vars:StringMap<String> = new StringMap();
@@ -619,7 +622,7 @@ class Emitter {
 					var full:String = pack.length > 0 ? pack + '.' + a.name : a.name;
 
 					if (!typePaths.exists(a.name))
-						typePaths.set(a.name, full);
+						bind(a.name, full);
 
 					moduleClasses.set(full, true);
 					moduleAbstracts.set(full, a.underlying == null ? '' : typeName(a.underlying));
@@ -649,7 +652,7 @@ class Emitter {
 					methodReturns.set(full, returns);
 				case DEnum(en):
 					var full:String = pack.length > 0 ? pack + '.' + en.name : en.name;
-					typePaths.set(en.name, full);
+					bind(en.name, full);
 					moduleClasses.set(full, true);
 
 					var ctors:StringMap<Bool> = new StringMap();
@@ -808,23 +811,104 @@ class Emitter {
 	}
 
 	/**
-	 * Re-resolves short names the way the module being emitted sees them: its package's types, then
-	 * its imports, then its own, each over the one before, as Haxe does.
+	 * Re-resolves short names the way the module being emitted sees them: the types of the root
+	 * package, then of each package down to its own, then its imports, then its own types, each over
+	 * the one before, as Haxe does.
 	 *
-	 * The package's types go first because the table is the whole batch's: without them, a type of
-	 * the package the module names without an import was whatever the previous module saw under that
-	 * name, such as a class it imported from another package.
-	 *
-	 * A class of the module's package that another batch holds is named as one, so a use of it is
-	 * refused as `compiled elsewhere`. Unknown, the name was compiled as a lookup that answered
-	 * nothing, and calling through it failed with `Null Function` once the module ran.
+	 * A class another batch holds, of the module's package or one above it, is named as one, so a
+	 * use of it is refused as `compiled elsewhere`. Unknown, the name was compiled as a lookup that
+	 * answered nothing, and calling through it failed with `Null Function` once the module ran.
 	 *
 	 * @param decls The declarations of the module about to be emitted.
 	 */
 	function ownView(decls:Array<ModuleDecl>):Void {
+		var pack:String = view(decls);
+
+		for (decl in decls) {
+			switch (decl.d) {
+				case DImport(path, mode):
+					recordImport(path, switch (mode) {
+						case IAsName(alias): alias;
+						case _: path[path.length - 1];
+					});
+
+				case DClass(c) | DInterface(c):
+					bind(c.name, pack.length > 0 ? pack + '.' + c.name : c.name);
+
+				case DAbstract(a):
+					bind(a.name, pack.length > 0 ? pack + '.' + a.name : a.name);
+
+				case DEnum(en):
+					bind(en.name, pack.length > 0 ? pack + '.' + en.name : en.name);
+
+				case _:
+			}
+		}
+	}
+
+	/**
+	 * Notes the types a module declares, before any module is read: a module names bare the types of
+	 * its package, wherever in the batch they are declared.
+	 *
+	 * @param decls The module's declarations.
+	 */
+	public function announce(decls:Array<ModuleDecl>):Void {
 		var pack:String = '';
 
-		forgetImports();
+		for (decl in decls) {
+			var name:Null<String> = switch (decl.d) {
+				case DPackage(path):
+					pack = path.join('.');
+					null;
+				case DClass(c) | DInterface(c): c.name;
+				case DAbstract(a): a.name;
+				case DEnum(en): en.name;
+				case _: null;
+			}
+
+			if (name == null)
+				continue;
+
+			var full:String = pack.length > 0 ? pack + '.' + name : name;
+			var held:Null<Array<String>> = declaredIn.get(pack);
+
+			if (held == null)
+				declaredIn.set(pack, held = []);
+
+			if (held.indexOf(full) < 0)
+				held.push(full);
+		}
+	}
+
+	/**
+	 * Starts the short names a module sees: what the module read before it bound is taken back out,
+	 * then the root package's types are named, and over them those of each package down to its own.
+	 *
+	 * The table is the whole batch's, and what a module bound stayed in it for every module read
+	 * afterwards, the types it declares under their bare names too: one module declaring or importing
+	 * a class named `Map` made `Map` that class in the others, which built it where they wrote a
+	 * standard map and failed at their first `set`. Each name is put back to what it named before,
+	 * the last bound first, since two may bind the same name.
+	 *
+	 * @param decls The module's declarations.
+	 * @return The module's package.
+	 */
+	function view(decls:Array<ModuleDecl>):String {
+		var at:Int = boundNames.length;
+
+		while (at-- > 0) {
+			var before:Null<String> = boundBefore[at];
+
+			if (before == null)
+				typePaths.remove(boundNames[at]);
+			else
+				typePaths.set(boundNames[at], before);
+		}
+
+		boundNames.resize(0);
+		boundBefore.resize(0);
+
+		var pack:String = '';
 
 		for (decl in decls)
 			switch (decl.d) {
@@ -833,42 +917,46 @@ class Emitter {
 				case _:
 			}
 
-		for (full in external.keys()) {
-			var dot:Int = full.lastIndexOf('.');
-			var short:String = full.substr(dot + 1);
-			if ((dot < 0 ? '' : full.substr(0, dot)) == pack)
-				typePaths.set(short, full);
-		}
+		// The root package, then each package down to the module's own.
+		var end:Int = -1;
 
-		for (full in moduleClasses.keys()) {
-			var dot:Int = full.lastIndexOf('.');
-			if ((dot < 0 ? '' : full.substr(0, dot)) == pack)
-				typePaths.set(full.substr(dot + 1), full);
-		}
+		while (true) {
+			var from:String = end < 0 ? '' : pack.substr(0, end);
 
-		for (decl in decls) {
-			switch (decl.d) {
-				case DPackage(path):
-					pack = path.join('.');
-
-				case DImport(path, mode):
-					recordImport(path, switch (mode) {
-						case IAsName(alias): alias;
-						case _: path[path.length - 1];
-					});
-
-				case DClass(c) | DInterface(c):
-					typePaths.set(c.name, pack.length > 0 ? pack + '.' + c.name : c.name);
-
-				case DAbstract(a):
-					typePaths.set(a.name, pack.length > 0 ? pack + '.' + a.name : a.name);
-
-				case DEnum(en):
-					typePaths.set(en.name, pack.length > 0 ? pack + '.' + en.name : en.name);
-
-				case _:
+			// What another batch holds first, so a use of it is refused as compiled elsewhere.
+			for (full in external.keys()) {
+				var dot:Int = full.lastIndexOf('.');
+				if ((dot < 0 ? '' : full.substr(0, dot)) == from)
+					bind(full.substr(dot + 1), full);
 			}
+
+			var held:Null<Array<String>> = declaredIn.get(from);
+
+			if (held != null)
+				for (full in held)
+					bind(full.substr(full.lastIndexOf('.') + 1), full);
+
+			if (end == pack.length || pack.length == 0)
+				break;
+
+			end = pack.indexOf('.', end + 1);
+			if (end < 0)
+				end = pack.length;
 		}
+
+		return pack;
+	}
+
+	/**
+	 * Names a type for the module being read, until the next one is.
+	 *
+	 * @param short The bare name.
+	 * @param full The path it stands for.
+	 */
+	function bind(short:String, full:String):Void {
+		boundNames.push(short);
+		boundBefore.push(typePaths.get(short));
+		typePaths.set(short, full);
 	}
 
 	/**
@@ -5217,35 +5305,8 @@ class Emitter {
 			}
 		}
 
-		importedNames.push(short);
-		importedBefore.push(typePaths.get(short));
-
-		typePaths.set(short, full);
+		bind(short, full);
 		bindConstructors(full);
-	}
-
-	/**
-	 * Takes the previous module's imports out of the short names, before another module is read.
-	 *
-	 * The table is the whole batch's, and an import stayed in it for every module read afterwards:
-	 * one module importing a host class named `Map` made `Map` that class in the others, which built
-	 * it where they wrote a standard map and failed at their first `set`. Each name is put back to
-	 * what it named before the import, the last import first, since two may bind the same name.
-	 */
-	function forgetImports():Void {
-		var at:Int = importedNames.length;
-
-		while (at-- > 0) {
-			var before:Null<String> = importedBefore[at];
-
-			if (before == null)
-				typePaths.remove(importedNames[at]);
-			else
-				typePaths.set(importedNames[at], before);
-		}
-
-		importedNames.resize(0);
-		importedBefore.resize(0);
 	}
 
 	/**
