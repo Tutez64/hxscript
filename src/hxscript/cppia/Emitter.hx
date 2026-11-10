@@ -807,6 +807,10 @@ class Emitter {
 	 * the package the module names without an import was whatever the previous module saw under that
 	 * name, such as a class it imported from another package.
 	 *
+	 * A class of the module's package that another batch holds is named as one, so a use of it is
+	 * refused as `compiled elsewhere`. Unknown, the name was compiled as a lookup that answered
+	 * nothing, and calling through it failed with `Null Function` once the module ran.
+	 *
 	 * @param decls The declarations of the module about to be emitted.
 	 */
 	function ownView(decls:Array<ModuleDecl>):Void {
@@ -818,6 +822,13 @@ class Emitter {
 					pack = path.join('.');
 				case _:
 			}
+
+		for (full in external.keys()) {
+			var dot:Int = full.lastIndexOf('.');
+			var short:String = full.substr(dot + 1);
+			if ((dot < 0 ? '' : full.substr(0, dot)) == pack)
+				typePaths.set(short, full);
+		}
 
 		for (full in moduleClasses.keys()) {
 			var dot:Int = full.lastIndexOf('.');
